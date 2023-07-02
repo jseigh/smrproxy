@@ -84,6 +84,7 @@ bool getconfig(testcase_t *tests, test_config_t *config, int argc, char **argv) 
                 config->test = find_test(tests, optarg);
                 break;
             case 'v':
+                config->verbose = true;
                 verbose = true;
                 break;
             case 'h':

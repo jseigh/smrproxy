@@ -28,7 +28,7 @@ static smrproxy_config_t default_config = {
     200,    // 200 retire queue sloots
     50,     // 50 msec poll interval
     false,  // no background thread
-    true,   // use global membar
+    64,     // default cachesize
 };
 
 smrproxy_config_t *smrproxy_default_config()
@@ -51,15 +51,15 @@ smrproxy_t * smrproxy_create(smrproxy_config_t *config)
     //proxy->config.queue_size = config->queue_size;
     //proxy->config.polltime = config->polltime;
     //proxy->config.poll = config->poll;
-
+    long cachesize = getcachesize();
+    if (cachesize > 0)
+        proxy->config.cachesize = cachesize;
 
     mtx_init(&proxy->mutex, mtx_plain);
     cnd_init(&proxy->cvar);
     tss_create(&proxy->key, (tss_dtor_t) &smrproxy_ref_destroy);
 
     proxy->membar = smrproxy_membar_create();   // TODO test return value
-
-    //membarrier(MB_REGISTER, 0, 0);
 
     proxy->epoch = 1;
     proxy->head = 1;
@@ -131,9 +131,12 @@ smrproxy_ref_t * smrproxy_ref_create(smrproxy_t *proxy)
 {
     smrproxy_ref_ex_t *ref_ex = tss_get(proxy->key);
     if (ref_ex != NULL)
-        return (smrproxy_ref_t *) ref_ex;
+        return &ref_ex->ref;
 
-    posix_memalign((void **)&ref_ex, 64, sizeof(smrproxy_ref_ex_t));
+    ref_ex = smrproxy_ref_alloc(proxy->config.cachesize);
+    if (ref_ex == NULL)
+        return  NULL;
+
     ref_ex->ref.proxy_epoch = &proxy->epoch;
     ref_ex->ref.epoch = 0;
     ref_ex->proxy = proxy;
@@ -187,8 +190,7 @@ void smrproxy_ref_destroy(smrproxy_ref_t *ref)
             ;   // error
     }
 
-    memset(ref_ex, 0, sizeof(smrproxy_ref_t));
-    free(ref);
+    smrproxy_ref_dealloc((smrproxy_ref_ex_t *) ref);
 
     mtx_unlock(&proxy->mutex);
 }
@@ -208,16 +210,12 @@ static epoch_t smrproxy_poll(smrproxy_t *proxy) {
     if (epoch != proxy->sync_epoch)
     {
         proxy->sync_epoch = epoch;
-        if (proxy->config.membar)
-        {
-            smrproxy_membar_sync(proxy->membar);
-
-            /*
-            * sync after other thread memory barriers
-            * after call to smrproxy_membar_sync.
-            */
-            atomic_thread_fence(memory_order_seq_cst);
-        }
+        smrproxy_membar_sync(proxy->membar);
+        /*
+        * sync after other thread memory barriers
+        * after call to smrproxy_membar_sync.
+        */
+        atomic_thread_fence(memory_order_seq_cst);
     }
 
     if (smrqueue_empty(proxy->queue))

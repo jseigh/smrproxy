@@ -23,6 +23,7 @@ extern "C" {
 
 #include <stdatomic.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef unsigned long epoch_t;
 
@@ -38,7 +39,7 @@ typedef struct smrproxy_config_t {
     unsigned int queue_size;        // size of retired objects queue
     unsigned int polltime;          // proxy refs poll interval in milliseconds
     bool poll;                      // use backgroupd polling thread -- boolean (default=false)
-    bool membar;                    // use global membar -- boolean (default=true)
+    long cachesize;                 // default cachesize if not available from system, must be a power of 2.
 } smrproxy_config_t;
 
 /*
@@ -47,6 +48,8 @@ typedef struct smrproxy_config_t {
 typedef struct smrproxy_ref_t {
     epoch_t epoch;
     epoch_t *proxy_epoch;
+    //
+    uintptr_t   data;               // for optional use by user application, e.g. recursive counting, ...
 } smrproxy_ref_t;
 
 /*
