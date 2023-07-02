@@ -34,6 +34,8 @@ static int testreader_default(void *x);
 static int testreader_smr(void *x);
 static int testreader_smr_tss(void *x);
 static int testreader_smr_noacc(void *x);
+static int testreader_smr_nest(void  *x);
+static int testreader_smr_nest2(void  *x);
 static int testreader_unsafe(void *x);
 static int testreader_rcu(void *x);
 static int testreader_arc(void *x);
@@ -50,6 +52,8 @@ static testcase_t test_suite[] = {
     {"smr",        &testreader_smr,      &testwriter, "smr w/ simple dependent load"},
     {"smr_tss",    &testreader_smr_tss,  &testwriter, "simple dependent loads w/ tss ref acquire"},
     {"smr_noacc",  &testreader_smr_noacc,  &testwriter, "smr w/ no access"},
+    {"smr_nest",   &testreader_smr_nest, &testwriter, "nestable smr"},
+    {"smr_nest2",  &testreader_smr_nest2, &testwriter, "nestable smr, ver 2"},
     {"rcu",        &testreader_rcu,      &testwriter, "rcu (simulated)"},
     {"arc",        &testreader_arc,      &testwriter, "refcounted (simulated)"},
     {"empty",      &testreader_empty,    &testwriter, "empty loop"},
@@ -151,7 +155,10 @@ static test_data_t *newtestdata(test_env_t *env)
     const unsigned int mod = env->config.mod;\
     test_stats_t stats = test_stats_init;\
     smrproxy_ref_t *ref = smrproxy_ref_create(env->context.proxy);\
-    tss_t key = env->context.key; \
+    if (env->config.verbose)\
+        fprintf(stderr, "ref@ %p\n", ref);\
+    ref->data = 0;\
+    tss_t key = env->context.key;\
     tss_set(key, ref);\
     long long t0 = gettime();\
     test_data_t **ppdata = &env->context.pdata;\
@@ -349,6 +356,28 @@ static int testreader_smr(void * x) {
     test_epilog
 }
 
+static int testreader_smr_nest(void * x) {
+    test_prolog
+    bool zz = (ref->epoch == 0);
+    if (zz)    
+        smrproxy_ref_acquire(ref);
+    dependent_load(ppdata);
+    if (zz)
+        smrproxy_ref_release(ref);
+    test_epilog
+}
+
+static int testreader_smr_nest2(void * x) {
+    test_prolog
+    bool zz = (ref->epoch == 0);
+    if (ref->data++ == 0)
+        smrproxy_ref_acquire(ref);
+    dependent_load(ppdata);
+    if (--ref->data == 0)
+        smrproxy_ref_release(ref);
+    test_epilog
+}
+
 static int testreader_smr_tss(void * x) {
     test_prolog
     ref = tss_get(key);
@@ -428,6 +457,7 @@ static void print_stats(test_env_t  *env)
 
 }
 
+
 int main(int argc, char **argv) {
 
     test_env_t env = {};
@@ -438,16 +468,10 @@ int main(int argc, char **argv) {
     fprintf(stderr, "test=%s\n", env.config.test->name);
 
     smrproxy_config_t *config = smrproxy_default_config();
-    #ifdef SMRPROXY_MB
-        config->membar = false;
-    #else
-        config->membar = true;
-    #endif
 
     config->poll = env.config.async;
     config->polltime = env.config.wsleep_ms;
     env.context.proxy = smrproxy_create(config);
-
 
     env.context.pdata = newtestdata(&env);
     env.context.pdata->state = STATE_LIVE;

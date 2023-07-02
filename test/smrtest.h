@@ -49,8 +49,10 @@ typedef struct {
     unsigned int wsleep_ms;     // writer update interval
 
     testcase_t *test;           // testcase
+
+    bool verbose;
 } test_config_t;
-static const test_config_t test_config_init = {false, 10, 10000, 0, 0, 50, NULL};
+static const test_config_t test_config_init = {false, 10, 10000, 0, 0, 50, NULL, false};
 
 typedef struct {
     long long arccount;

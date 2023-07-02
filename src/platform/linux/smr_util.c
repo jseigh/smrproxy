@@ -23,11 +23,13 @@ static int names[] = {
 };
 #define NAMES_SZ 3
 
+
 long getcachesize() {
     for (int ndx = 0; ndx < NAMES_SZ; ndx++) {
         long val = sysconf(names[ndx]);
         if (val != -1)
             return val;
     }
-    return 64;
+    return -1;
 }
+

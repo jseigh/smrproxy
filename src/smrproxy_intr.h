@@ -43,6 +43,9 @@ typedef struct smrproxy_ref_ex_t {
     smrproxy_ref_t ref;
     smrproxy_t *proxy;
     struct smrproxy_ref_ex_t *next;
+
+    void *base;         // address of allocated memory block containing this struct
+    size_t size;        // size of allocated memory block;
 } smrproxy_ref_ex_t;
 
 /*
@@ -96,6 +99,12 @@ extern epoch_t smr_dequeue(smrqueue_t *queue, const epoch_t oldest);
 * get cache line size
 */
 extern long getcachesize();
+
+/*
+* cache aware allocation of smrproxy_ref's
+*/
+extern smrproxy_ref_ex_t *smrproxy_ref_alloc(const size_t cachesize);
+extern void smrproxy_ref_dealloc(smrproxy_ref_ex_t *ref_ex);
 
 /*
  * memorybarrier

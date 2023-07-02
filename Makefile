@@ -13,8 +13,15 @@ E =
 S = $E $E
 
 
-SRCFILES = $(wildcard src/*.c)
-OBJFILES = $(patsubst src/%.c, lib/%.o, $(SRCFILES))
+SRCFILES1 = $(wildcard src/*.c)
+OBJFILES1 = $(patsubst src/%.c, lib/%.o, $(SRCFILES1))
+
+SRCFILES2 = $(wildcard src/platform/linux/*.c)
+OBJFILES2 = $(patsubst src/platform/linux/%.c, lib/%.o, $(SRCFILES2))
+
+SRCFILES = $(SRCFILES1) $(SRCFILES2)
+OBJFILES = $(OBJFILES1) $(OBJFILES2)
+
 OUTFILE = lib/libsmrproxy.a
 
 
