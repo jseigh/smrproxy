@@ -21,7 +21,7 @@
 #include <string.h>
 #include <errno.h>
 
-#include "smrproxy_intr.h"
+#include <smrproxy_intr.h>
 
 
 static smrproxy_config_t default_config = {

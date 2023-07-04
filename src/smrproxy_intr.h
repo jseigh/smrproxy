@@ -27,7 +27,7 @@ extern "C" {
 #include <stdatomic.h>
 #include <threads.h>
 
-#include "smrproxy.h"
+#include <smrproxy.h>
 
 #define MB_REGISTER MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED
 #define MB_CMD MEMBARRIER_CMD_PRIVATE_EXPEDITED

@@ -19,7 +19,7 @@
 #include <string.h>
 //#include <stdatomic.h>
 //#include <threads.h>
-#include "smrproxy_intr.h"
+#include <smrproxy_intr.h>
 
 /*
 *
