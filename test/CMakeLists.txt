@@ -4,8 +4,8 @@ project(smrproxy_test)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -std=gnu17 -ggdb")
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /O2 /std:c17")
+else ()
+    message(FATAL_ERROR "unsupported system type")
 endif ()
 
 add_executable(smrtest smrtest.c smrtestconfig.c)
