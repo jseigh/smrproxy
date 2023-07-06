@@ -17,7 +17,7 @@
 #include <smrproxy.h>
 #include <stdlib.h>
 #include <string.h>
-#include "smrproxy_intr.h"
+#include <smrproxy_intr.h>
 
 #include <stdio.h>
 

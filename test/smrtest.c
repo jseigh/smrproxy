@@ -25,7 +25,7 @@
 #include <sys/resource.h>
 #include <string.h>
 
-#include "smrtest.h"
+#include <smrtest.h>
 
 
 #define unlikely(x)     __builtin_expect((x),0)
