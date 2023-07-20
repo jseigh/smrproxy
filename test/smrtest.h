@@ -58,11 +58,21 @@ typedef struct {
     long long arccount;
     tss_t key;
     smrproxy_t *proxy;
-    pthread_rwlock_t rwlock;
     test_data_t *pdata;             // shared data
+
     atomic_bool active;
+
+    pthread_rwlock_t rwlock;
+    pthread_mutex_t mutex;
+    pthread_cond_t cvar;
 } test_context_t;
-static const test_context_t test_context_init = {0, 0, NULL, PTHREAD_RWLOCK_INITIALIZER, NULL, true};
+static const test_context_t test_context_init = {
+        0, 0, NULL, NULL,
+        true,
+        PTHREAD_RWLOCK_INITIALIZER,
+        PTHREAD_MUTEX_INITIALIZER,
+        PTHREAD_COND_INITIALIZER,
+    };
 
 typedef struct {
         long live;

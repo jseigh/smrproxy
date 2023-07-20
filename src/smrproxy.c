@@ -237,11 +237,22 @@ static epoch_t smrproxy_poll(smrproxy_t *proxy) {
     return proxy->head;
 }
 
+#define NANOS 1000000000
 static inline int poll_wait(smrproxy_t *proxy)
 {
-    long wait_nanos = proxy->config.polltime * 1000000;
-    struct timespec waittime = {0, wait_nanos};
-    return cnd_timedwait(&proxy->cvar, &proxy->mutex, &waittime);
+    unsigned long wait =  proxy->config.polltime * 1000000;  // milliseconds to nanoseconds
+
+    struct timespec ts;
+    timespec_get(&ts, TIME_UTC);
+    ts.tv_sec += wait / NANOS;
+    ts.tv_nsec += wait % NANOS;
+    if (ts.tv_nsec > NANOS)
+    {
+        ts.tv_sec++;
+        ts.tv_nsec -= NANOS;
+    }
+
+    return cnd_timedwait(&proxy->cvar, &proxy->mutex, &ts);
 }
 
 static epoch_t smrproxy_poll2(smrproxy_t *proxy, epoch_t epoch)
@@ -251,7 +262,11 @@ static epoch_t smrproxy_poll2(smrproxy_t *proxy, epoch_t epoch)
         if (epoch != 0 && xcmp(oldest, epoch) >= 0)
             return oldest;
 
-        poll_wait(proxy);
+        if (smrqueue_empty(proxy->queue))
+            cnd_wait(&proxy->cvar, &proxy->mutex);
+        else
+            poll_wait(proxy);
+
         if (proxy->active == false)
             return oldest;
     }

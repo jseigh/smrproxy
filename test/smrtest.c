@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include <smrtest.h>
+#include <pthread.h>
 
 
 #define unlikely(x)     __builtin_expect((x),0)
@@ -100,36 +101,63 @@ static long long gettime()
     return gettimex(CLOCK_THREAD_CPUTIME_ID);
 }
 
+static inline void sleep(int wait_msec)
+{
+    if (wait_msec <= 0)
+    {
+        thrd_yield();
+    }
+    else
+    {
+        struct timespec wait;
+        wait.tv_sec = wait_msec / 1000;
+        wait.tv_nsec = (wait_msec % 1000) * 1000000;
+        thrd_sleep(&wait, NULL);
+    }
+}
 
 static inline void try_sleep(int wait_msec, long count, long mod)
 {
     if (mod != 0 && !(count%mod == (mod - 1)))
         return;
 
+    //sleep(wait_msec);
     if (wait_msec <= 0)
     {
         thrd_yield();
     }
     else
     {
-        struct timespec wait = {0, wait_msec * 1000000};
+        struct timespec wait;
+        wait.tv_sec = wait_msec / 1000;
+        wait.tv_nsec = (wait_msec % 1000) * 1000000;
         thrd_sleep(&wait, NULL);
     }
 }
 
-static void sleep(int wait_msec)
+/**
+ * writer sleep using cvar
+*/
+static void sleep2(test_env_t *env, int wait_msec)
 {
-    if (wait_msec <= 0)
+    struct timespec wait;
+    clock_gettime(CLOCK_REALTIME, &wait);
+    wait.tv_sec += wait_msec / 1000;
+    wait.tv_nsec += (wait_msec % 1000) * 1000000;
+    time_t xsec = wait.tv_nsec / 1000000000;
+    if (xsec > 0)
     {
-        thrd_yield();
+        wait.tv_sec += xsec;
+        wait.tv_nsec = wait.tv_nsec % 1000000000;
     }
-    else
-    {
-        struct timespec wait = {0, wait_msec * 1000000};
-        thrd_sleep(&wait, NULL);
-    }
+    int rc;
+    rc = pthread_mutex_lock(&env->context.mutex);
+    if (rc != 0)
+        abort();
+    rc = pthread_cond_timedwait(&env->context.cvar, &env->context.mutex, &wait);
+    rc = pthread_mutex_unlock(&env->context.mutex);
+    sched_yield();
 }
-
 
 static void freedata(void *data)
 {
@@ -239,7 +267,10 @@ static int testwriter(void *x)
 
     while(env->context.active)
     {
-        sleep(env->config.wsleep_ms);
+        sleep2(env, env->config.wsleep_ms);
+
+        if (!env->context.active)
+            break;
 
         pdata->state = STATE_LIVE;
         pdata = atomic_exchange(&env->context.pdata, pdata);
@@ -499,12 +530,16 @@ int main(int argc, char **argv) {
 
     fprintf(stderr, "readers finished\n");
 
-    env.context.active = false;
     atomic_store(&env.context.active, false);
+    pthread_mutex_lock(&env.context.mutex);
+    pthread_cond_broadcast(&env.context.cvar);
+    pthread_mutex_unlock(&env.context.mutex);
     thrd_join(writer, NULL);
 
     smrproxy_destroy(env.context.proxy);
     pthread_rwlock_destroy(&env.context.rwlock);
+    pthread_cond_destroy(&env.context.cvar);
+    pthread_mutex_destroy(&env.context.mutex);
 
     freedata(env.context.pdata);
     env.context.pdata = NULL;
@@ -515,3 +550,4 @@ int main(int argc, char **argv) {
 
     return 0;
 }
+
