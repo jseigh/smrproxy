@@ -25,7 +25,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef unsigned long epoch_t;
+typedef uint32_t epoch_t;
 
 /**
  * @brief opaque handle to smr proxy object
@@ -126,10 +126,10 @@ extern void smrproxy_ref_destroy(smrproxy_ref_t *ref);
 */
 inline static void smrproxy_ref_acquire(smrproxy_ref_t *ref)
 {
-    long *epoch = ref->proxy_epoch;
-    long *ref_epoch = &ref->epoch;
+    epoch_t *epoch = ref->proxy_epoch;
+    epoch_t *ref_epoch = &ref->epoch;
 
-    long local, local2;
+    epoch_t local, local2;
 
 #ifndef SMRPROXY_MB
     local = atomic_load_explicit(epoch, memory_order_relaxed);

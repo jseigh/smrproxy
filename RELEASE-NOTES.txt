@@ -1,4 +1,14 @@
 
 Release
 
-0.0.0-pre-alpha  proof of concept
+0.0.3-pre-alpha  proof of concept
+
+Decoupled epoch from queue index so wrap around works correctly since epoch range isn't a multiple of queue size.
+Changed epoch comparator so its return value is always same size as epoch_t.
+Use C11 aligned_alloc to allocate cache aligned memory.
+Move global epoch to its own cache line.
+
+
+0.0.2-pre-alpha  proof of concept
+
+0.0.1-pre-alpha  proof of concept
