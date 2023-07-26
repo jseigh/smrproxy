@@ -26,14 +26,34 @@ extern "C" {
 #include <stdlib.h>
 #include <stdatomic.h>
 #include <threads.h>
+#include <assert.h>
 
 #include <smrproxy.h>
 
 #define MB_REGISTER MEMBARRIER_CMD_REGISTER_PRIVATE_EXPEDITED
 #define MB_CMD MEMBARRIER_CMD_PRIVATE_EXPEDITED
 
-inline static long xcmp(epoch_t a, epoch_t b) { return a - b; }
-inline static unsigned int e2ndx(epoch_t epoch, unsigned int size) { return (epoch >> 1)%size; }
+/*
+* must be signed and same size as epoch_t
+*/
+typedef int32_t cc_epoch_t;
+
+static_assert(sizeof(epoch_t) == sizeof(cc_epoch_t), "cc_epoch_t not same size as epoch_t");
+
+/**
+ * Comparator for epoch_t values which can wrap.
+ * <p>
+ * Values must be within 1/2 the range of values.
+ * @param a first value
+ * @param b second value
+ * @returns
+ * <dl>
+ * <dt>&lt;0</dt><dd>a &lt; b</dd>
+ * <dt>==0</dt><dd>a == b</dd>
+ * <dt>&gt;0</dt><dd>a &gt; b</dd>
+ * </dl>
+*/
+inline static cc_epoch_t xcmp(epoch_t a, epoch_t b) { return (a - b); }
 
 typedef struct smrqueue_t smrqueue_t;
 
@@ -57,7 +77,8 @@ typedef struct smrproxy_ref_ex_t {
 *
 */
 typedef struct smrproxy_t {
-    epoch_t epoch;          // current epoch, a.k.a tail
+    epoch_t *epoch;          // current epoch, a.k.a tail
+
     epoch_t head;           // oldest
 
     epoch_t sync_epoch;     // last memorybarrier synced epoch
@@ -99,12 +120,6 @@ extern epoch_t smr_dequeue(smrqueue_t *queue, const epoch_t oldest);
 * get cache line size
 */
 extern long getcachesize();
-
-/*
-* cache aware allocation of smrproxy_ref's
-*/
-extern smrproxy_ref_ex_t *smrproxy_ref_alloc(const size_t cachesize);
-extern void smrproxy_ref_dealloc(smrproxy_ref_ex_t *ref_ex);
 
 /*
  * memorybarrier

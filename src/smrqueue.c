@@ -21,18 +21,25 @@
 //#include <threads.h>
 #include <smrproxy_intr.h>
 
+#include <stdio.h>
+
 /*
 *
 * retired data object holder
 */
 typedef struct {
-    void *obj;      // data object being retired
-    void (*dtor)(void *);    // retirement function, e.g. free, dtor, ...
+    void *obj;                  // data object being retired
+    void (*dtor)(void *);       // retirement function, e.g. free, dtor, ...
 } node_t;
 
 
 typedef struct smrqueue_t {
     unsigned int size;
+    epoch_t max_epoch;
+
+    unsigned int head_ndx;
+    unsigned int tail_ndx;
+
     epoch_t head;
     epoch_t tail;
     node_t node[];
@@ -41,12 +48,18 @@ typedef struct smrqueue_t {
 smrqueue_t *smrqueue_create(epoch_t epoch, unsigned int size)
 {
     if ((epoch & 1) != 1)
-        return NULL;
+        return NULL;            // starting epoch must be odd number
+
+    // TODO  size < EPOCH_MAX / 4
 
     int sz = sizeof(smrqueue_t)  + (size * sizeof(node_t));
     smrqueue_t *queue = malloc(sz);
     memset(queue, 0, sz);
     queue->size = size;
+
+    queue->head_ndx = 0;
+    queue->tail_ndx = 0;
+
     queue->head = epoch;
     queue->tail = epoch;
 
@@ -84,12 +97,14 @@ epoch_t smr_enqueue(smrqueue_t *queue, void *obj, void (*dtor)(void *))
     if (smrqueue_full(queue))
         return 0;
 
-    unsigned int ndx = e2ndx(queue->tail, queue->size);
-    node_t *node = &queue->node[ndx];
+    node_t *node = &queue->node[queue->tail_ndx];
 
     node->obj = obj;
     node->dtor = dtor;
+
+    queue->tail_ndx = (queue->tail_ndx + 1) % queue->size;
     queue->tail += 2;
+
     return queue->tail;
 }
 
@@ -112,14 +127,13 @@ epoch_t smr_dequeue(smrqueue_t *queue, const epoch_t oldest)
     if (xcmp(oldest, queue->head) <= 0)
         return queue->head;
 
-
-    for (epoch_t epoch_ndx = queue->head; epoch_ndx != oldest; epoch_ndx += 2 )
+    for (epoch_t epoch_ndx = queue->head; epoch_ndx != oldest; epoch_ndx += 2)
     {
-        unsigned int ndx = e2ndx(epoch_ndx, queue->size);
-        node_t  *node = &queue->node[ndx];
+        node_t  *node = &queue->node[queue->head_ndx];
         (node->dtor)(node->obj);
         node->obj = NULL;
         node->dtor = NULL;
+        queue->head_ndx = (queue->head_ndx + 1) % queue->size;
     }
     queue->head = oldest;
     return oldest;

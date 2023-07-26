@@ -16,7 +16,6 @@ endif ()
 add_library(smrproxy STATIC
     src/smrproxy.c
     src/smrqueue.c
-    src/smrref.c
     src/platform/${platform}/membarrier.c
     src/platform/${platform}/smr_util.c
 )

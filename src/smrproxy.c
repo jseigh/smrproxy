@@ -47,13 +47,11 @@ smrproxy_t * smrproxy_create(smrproxy_config_t *config)
 
     smrproxy_t * proxy = malloc(sizeof(smrproxy_t));
     proxy->config = *config;
-    //memcpy(&proxy->config, config, sizeof(smrproxy_config_t));
-    //proxy->config.queue_size = config->queue_size;
-    //proxy->config.polltime = config->polltime;
-    //proxy->config.poll = config->poll;
     long cachesize = getcachesize();
     if (cachesize > 0)
         proxy->config.cachesize = cachesize;
+    else
+        cachesize = proxy->config.cachesize;
 
     mtx_init(&proxy->mutex, mtx_plain);
     cnd_init(&proxy->cvar);
@@ -61,13 +59,16 @@ smrproxy_t * smrproxy_create(smrproxy_config_t *config)
 
     proxy->membar = smrproxy_membar_create();   // TODO test return value
 
-    proxy->epoch = 1;
-    proxy->head = 1;
-    proxy->sync_epoch = 1;
+    proxy->epoch = aligned_alloc(cachesize, cachesize);     // cachesize > sizeof epoch_t
+
+    epoch_t epoch = 1;
+    *proxy->epoch = epoch;
+    proxy->head = epoch;
+    proxy->sync_epoch = epoch;
 
     proxy->refs = NULL;
 
-    proxy->queue = smrqueue_create(proxy->epoch, config->queue_size);
+    proxy->queue = smrqueue_create(*proxy->epoch, config->queue_size);
 
     proxy->active = true;
     /*
@@ -113,8 +114,7 @@ void smrproxy_destroy(smrproxy_t *proxy)
     }
 
 
-    //smr_dequeue(proxy->queue, proxy->epoch);
-    smr_dequeue(proxy->queue, proxy->epoch);
+    smr_dequeue(proxy->queue, *proxy->epoch);
 
     smrqueue_destroy(proxy->queue);
     smrproxy_membar_destroy(proxy->membar);
@@ -123,6 +123,7 @@ void smrproxy_destroy(smrproxy_t *proxy)
     cnd_destroy(&proxy->cvar);
     mtx_destroy(&proxy->mutex);
 
+    free(proxy->epoch);
     memset(proxy, 0, sizeof(smrproxy_t));
     free(proxy);
 }
@@ -133,11 +134,15 @@ smrproxy_ref_t * smrproxy_ref_create(smrproxy_t *proxy)
     if (ref_ex != NULL)
         return &ref_ex->ref;
 
-    ref_ex = smrproxy_ref_alloc(proxy->config.cachesize);
+    size_t cachesize = proxy->config.cachesize;
+
+    size_t size = ((sizeof(smrproxy_ref_t) + cachesize - 1)/cachesize)*cachesize;
+    ref_ex = aligned_alloc(cachesize, size);
     if (ref_ex == NULL)
         return  NULL;
 
-    ref_ex->ref.proxy_epoch = &proxy->epoch;
+    memset(ref_ex, 0, size);
+    ref_ex->ref.proxy_epoch = proxy->epoch;
     ref_ex->ref.epoch = 0;
     ref_ex->proxy = proxy;
 
@@ -190,7 +195,7 @@ void smrproxy_ref_destroy(smrproxy_ref_t *ref)
             ;   // error
     }
 
-    smrproxy_ref_dealloc((smrproxy_ref_ex_t *) ref);
+    free(ref_ex);
 
     mtx_unlock(&proxy->mutex);
 }
@@ -206,7 +211,7 @@ void smrproxy_ref_destroy(smrproxy_ref_t *ref)
  * 
 */
 static epoch_t smrproxy_poll(smrproxy_t *proxy) {
-    epoch_t epoch = proxy->epoch;
+    epoch_t epoch = *proxy->epoch;
     if (epoch != proxy->sync_epoch)
     {
         proxy->sync_epoch = epoch;
@@ -287,7 +292,7 @@ long smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(void *))
     mtx_lock(&proxy->mutex);
 
     epoch_t epoch = smr_enqueue(proxy->queue, data, dtor);
-    atomic_store(&proxy->epoch, epoch);
+    atomic_store(proxy->epoch, epoch);
 
     cnd_broadcast(&proxy->cvar);
 
@@ -314,7 +319,7 @@ int smrproxy_retire_sync(smrproxy_t *proxy, void *data, void (*dtor)(void *))
         else
             poll_wait(proxy);
     }
-    atomic_store(&proxy->epoch, epoch);
+    atomic_store(proxy->epoch, epoch);
 
     smrproxy_poll2(proxy, epoch);
 
