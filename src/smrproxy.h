@@ -160,6 +160,41 @@ inline static void smrproxy_ref_release(smrproxy_ref_t *ref)
     atomic_store_explicit(&ref->epoch, 0, memory_order_release);
 }
 
+/*
+ * experimental api
+ * may be removed or changed
+*/
+
+/**
+ * Get current epoch.
+ * The current epoch will be the expiry epoch used for the next retire.
+ * Synchronization is reqired to ensure this.
+ * @param proxy the proxy
+ * @returns current epoch
+*/
+extern epoch_t smrproxy_get_epoch(smrproxy_t *proxy);
+
+/**
+ * Set the reference epoch to node's expiry epoch if the object has been retired
+ * or a recent current epoch value if the node is still live.  Any traveral of a
+ * data structure requires the expiry values (if set) be monotonically increasing.
+ * @param ref current threads epoch reference
+ * @param getexpiry function to get expiry epoch value or 0 if node is still live.
+ * @param node the current data structure node.
+ * 
+ * @note
+ * One way of ensuring monotonicity is to
+ * 1) acquire mutex to coordinate node deletes w/ expiry epochs
+ * 2) get current epoch as expiry epoch
+ * 3) set node expiry epoch
+ * 4) unlink node (make it unreachable)
+ * 5) retire node
+ * 6) release mutex
+ *
+*/
+extern void smrproxy_ref_next(smrproxy_ref_t *ref, epoch_t (*getexpiry)(void *), void *node);
+
+
 #ifdef __cplusplus
 }
 #endif

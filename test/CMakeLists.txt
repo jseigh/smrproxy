@@ -8,12 +8,25 @@ else ()
     message(FATAL_ERROR "unsupported system type")
 endif ()
 
+message(STATUS "CMAKE_SOURCE_DIR : ${CMAKE_SOURCE_DIR}")
+message(STATUS "PROJECT_SOURCE_DIR : ${PROJECT_SOURCE_DIR}")
+
 add_executable(example example.c)
 target_include_directories(example PUBLIC
-    ../include
+    ${CMAKE_SOURCE_DIR}/../include
     )
 
 target_link_libraries(example 
-    ${CMAKE_CURRENT_SOURCE_DIR}/../lib/libsmrproxy.a
+    ${CMAKE_SOURCE_DIR}/../lib/libsmrproxy.a
     )
+
+add_executable(example2 example2.c)
+target_include_directories(example2 PUBLIC
+    ${CMAKE_SOURCE_DIR}/../include
+    )
+
+target_link_libraries(example2
+    ${CMAKE_SOURCE_DIR}/../lib/libsmrproxy.a
+    )
+
 
