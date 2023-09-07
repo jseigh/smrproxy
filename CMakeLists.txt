@@ -11,6 +11,9 @@ else ()
     message(FATAL_ERROR "unsupported system type")
 endif ()
 
+message(STATUS "CMAKE_SOURCE_DIR : ${CMAKE_SOURCE_DIR}")
+message(STATUS "PROJECT_SOURCE_DIR : ${PROJECT_SOURCE_DIR}")
+
 #set(ADDITIONAL_CLEAN_FILES include lib)
 
 add_library(smrproxy STATIC
@@ -18,6 +21,8 @@ add_library(smrproxy STATIC
     src/smrqueue.c
     src/platform/${platform}/membarrier.c
     src/platform/${platform}/smr_util.c
+
+    src/smriterator.c
 )
 
 target_include_directories(smrproxy PUBLIC
@@ -30,9 +35,9 @@ set_property(TARGET smrproxy
 )
 
 #${CMAKE_INSTALL_INCLUDEDIR}
-install(FILES src/smrproxy.h DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/include)
+install(FILES src/smrproxy.h DESTINATION ${CMAKE_SOURCE_DIR}/include)
 #${CMAKE_INSTALL_LIBDIR}
-install(TARGETS smrproxy DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/lib)
+install(TARGETS smrproxy DESTINATION ${CMAKE_SOURCE_DIR}/lib)
 
 #target_compile_options(smrproxy PUBLIC ()
 
