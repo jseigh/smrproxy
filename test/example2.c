@@ -65,11 +65,10 @@ static void push(queue_t *queue, const int event_id)
     epoch_t ref_epoch = smrproxy_get_epoch(queue->proxy);
     atomic_store_explicit(&current->expiry, ref_epoch, memory_order_release);
 
-
+    current->event_id = event_id;
     atomic_store_explicit(&current->next, node, memory_order_release);
     // make node unreachable
     atomic_store_explicit(&queue->events, node, memory_order_release); 
-    current->event_id = event_id;
 
     fprintf(stdout, "retiring event_id=%d expiry=%lu\n", event_id, ref_epoch);
     smrproxy_retire_async(queue->proxy, current, &free_node);
