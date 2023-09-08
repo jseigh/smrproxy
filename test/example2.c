@@ -60,15 +60,18 @@ static void push(queue_t *queue, const int event_id)
 
     mtx_lock(&queue->mutex);
 
+    pnode_t current = queue->events;
+
     epoch_t ref_epoch = smrproxy_get_epoch(queue->proxy);
-    atomic_store_explicit(&node->expiry, ref_epoch, memory_order_release);
+    atomic_store_explicit(&current->expiry, ref_epoch, memory_order_release);
 
+    current->event_id = event_id;
+    atomic_store_explicit(&current->next, node, memory_order_release);
     // make node unreachable
-    atomic_store_explicit(&queue->events->next, node, memory_order_release);
-    pnode_t prevnode = atomic_exchange_explicit(&queue->events, node, memory_order_release);
-    prevnode->event_id = event_id;
+    atomic_store_explicit(&queue->events, node, memory_order_release); 
 
-    smrproxy_retire_async(queue->proxy, prevnode, &free_node);      // doesn't return actual expiry epoch but shouldn't really matter if we don't use it
+    fprintf(stdout, "retiring event_id=%d expiry=%lu\n", event_id, ref_epoch);
+    smrproxy_retire_async(queue->proxy, current, &free_node);
 
     cnd_broadcast(&queue->cvar);
     mtx_unlock(&queue->mutex);
@@ -107,15 +110,11 @@ static int listen(void *arg)
         epoch_t prev_epoch = ref->epoch;
         smrproxy_ref_next(ref, &getexpiry, node);
         epoch_t next_epoch = ref->epoch;
-        fprintf(stdout, "%lu) epoch: prev=%u next=%u\n", tid, prev_epoch, next_epoch);
+        fprintf(stdout, "%lu) event_id=%d epoch: prev=%u next=%u\n", tid, node->event_id, prev_epoch, next_epoch);
 
         sleep(500);
 
-        int event_id = node->event_id;
-
-        fprintf(stdout, "%lu) event id = %d\n", tid, event_id);
-
-        if (event_id == -1)
+        if (node->event_id == -1)
             break;
 
         node = atomic_load_explicit(&node->next, memory_order_acquire);
@@ -149,11 +148,13 @@ int main(int argc, char **argv)
     thrd_create(&reader, &listen, queue);
     thrd_create(&reader2, &listen, queue);
 
+    sleep(500);  // give reader threads chance to start
+
 
     for (int ndx = 1; ndx <= 20; ndx++)
     {
         push(queue, 1000 + ndx);
-        sleep(400);
+        sleep(300);
     }
     push(queue, -1);
 
@@ -164,7 +165,7 @@ int main(int argc, char **argv)
     free_node(queue->events);
     cnd_destroy(&queue->cvar);
     mtx_destroy(&queue->mutex);
-
+    free(queue);
 
     return 0;
 }
