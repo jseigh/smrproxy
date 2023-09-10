@@ -287,9 +287,15 @@ static int *smrproxy_poll3(void *arg)
     return 0;
 }
 
-long smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(void *))
+void smrproxy_retire_async_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx)
 {
     mtx_lock(&proxy->mutex);
+
+    if (setexpiry != NULL)
+    {
+        epoch_t expiry = *(proxy->epoch);
+        (*setexpiry)(expiry, data, ctx);
+    }
 
     epoch_t epoch = smr_enqueue(proxy->queue, data, dtor);
     atomic_store(proxy->epoch, epoch);
@@ -297,10 +303,15 @@ long smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(void *))
     cnd_broadcast(&proxy->cvar);
 
     mtx_unlock(&proxy->mutex);
-    return epoch;
 }
 
-int smrproxy_retire_sync(smrproxy_t *proxy, void *data, void (*dtor)(void *))
+
+void smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(void *))
+{
+    smrproxy_retire_async_exp(proxy, data, dtor, NULL, NULL);
+}
+
+int smrproxy_retire_sync_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx)
 {
     smrproxy_ref_t *ref = tss_get(proxy->key);
     if (ref != NULL && ref->epoch != 0)
@@ -310,6 +321,11 @@ int smrproxy_retire_sync(smrproxy_t *proxy, void *data, void (*dtor)(void *))
     if (rc != 0)
         return rc;
 
+    if (setexpiry != NULL)
+    {
+        epoch_t expiry = *(proxy->epoch);
+        (*setexpiry)(expiry, data, ctx);
+    }
 
     epoch_t epoch = 0;
     while ((epoch = smr_enqueue(proxy->queue, data, dtor)) == 0) {
@@ -325,6 +341,55 @@ int smrproxy_retire_sync(smrproxy_t *proxy, void *data, void (*dtor)(void *))
 
     mtx_unlock(&proxy->mutex);
     return 0;
+}
+
+int smrproxy_retire_sync(smrproxy_t *proxy, void *data, void (*dtor)(void *))
+{
+    return smrproxy_retire_sync_exp(proxy, data, dtor, NULL, NULL);
+}
+
+/**
+ * get current epoch
+ * @param proxy
+ * @returns the current epoch
+*/
+epoch_t smrproxy_get_epoch(smrproxy_t *proxy)
+{
+    return atomic_load_explicit(proxy->epoch, memory_order_acquire);
+}
+
+/**
+ * update proxy reference epoch if node expiry is newer than it.
+ * @param ref the proxy reference
+ * @param getexpiry get node expiry function
+ * @param node data node
+ * @param ctx getexpiry context or NULL
+ * 
+ * @note
+ * To ensure monoticity when muliple nodes are being retired,
+ * the nodes should be retires as a batch, meaning the dtor and setexpiry
+ * need to take a "batch" parameter, or if done with multiple retire calls,
+ * ordered in decending order, meaning a node doesn't get retired until its
+ * parent nodes in the batch are retired.
+ * 
+*/
+void smrproxy_ref_next(smrproxy_ref_t *ref, epoch_t (*getexpiry)(void *node, void *ctx), void *node, void *ctx)
+{
+    if (ref->epoch == 0)
+    {
+        smrproxy_ref_acquire(ref);
+        return;
+    }
+
+    epoch_t current_epoch = atomic_load_explicit(ref->proxy_epoch, memory_order_acquire);
+    epoch_t node_expiry = (*getexpiry)(node, ctx);
+
+    if (node_expiry == 0)
+        atomic_store_explicit(&ref->epoch, current_epoch, memory_order_release);
+    else if (xcmp(node_expiry, ref->epoch) > 0)
+        atomic_store_explicit(&ref->epoch, node_expiry, memory_order_release);
+    else
+        ;
 }
 
 /*-*/

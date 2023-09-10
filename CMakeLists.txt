@@ -21,8 +21,6 @@ add_library(smrproxy STATIC
     src/smrqueue.c
     src/platform/${platform}/membarrier.c
     src/platform/${platform}/smr_util.c
-
-    src/smriterator.c
 )
 
 target_include_directories(smrproxy PUBLIC

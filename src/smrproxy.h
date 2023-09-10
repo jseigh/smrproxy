@@ -32,6 +32,7 @@ typedef uint32_t epoch_t;
 */
 typedef struct smrproxy_t smrproxy_t;   // forward declare
 
+
 /*
 * smrproxy configuration
 */
@@ -81,15 +82,37 @@ extern smrproxy_t * smrproxy_create(smrproxy_config_t *config);
 extern void smrproxy_destroy(smrproxy_t *proxy);
 
 /**
- * Retire a data object asynchronously.
+ * Retire a data object asynchronously and set expiry epoch, void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx
+ * @param proxy the smr proxy
+ * @param data address of data to be retired
+ * @param dtor destructor function for data
+ * @param setexpiry set expiry value function
+ * @param ctx optional context for setexpiry or NULL
+*/
+extern void smrproxy_retire_async_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx);
+
+/**
+ * Retire a data object asynchronously., void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx
+ * @param proxy the smr proxy
+ * @param data address of data to be retired
+ * @param dtor destructor function for data
+*/
+extern void smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(void *));
+
+/**
+ * Retire a data object synchronously and set expiry epoch.
  * 
  * @param proxy the smr proxy
  * @param data address of data to be retired
  * @param dtor destructor function for data
- * 
- * @return epoch  -- ?
+  * @param setexpiry set expiry value function
+ * @param ctx optional context for setexpiry or NULL
+* 
+ * @return
+ *- 0 if successful
+ *- EDEADLK if current thread has a acquired ref
 */
-extern long smrproxy_retire_async(smrproxy_t *prooxy, void *data, void (*dtor)(void *));
+extern int smrproxy_retire_sync_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx);
 
 /**
  * Retire a data object synchronously.
@@ -121,7 +144,7 @@ extern void smrproxy_ref_destroy(smrproxy_ref_t *ref);
 
 /**
  * Acquire an smrproxy protected reference to current epoch
- * 
+ * long
  * @param ref smrproxy reference
 */
 inline static void smrproxy_ref_acquire(smrproxy_ref_t *ref)
@@ -131,7 +154,7 @@ inline static void smrproxy_ref_acquire(smrproxy_ref_t *ref)
 
     epoch_t local, local2;
 
-#ifndef SMRPROXY_MB
+#ifndef SMRPROXY_MBlong
     local = atomic_load_explicit(epoch, memory_order_relaxed);
     do {
         local2 = local;
@@ -182,17 +205,9 @@ extern epoch_t smrproxy_get_epoch(smrproxy_t *proxy);
  * @param getexpiry function to get expiry epoch value or 0 if node is still live.
  * @param node the current data structure node.
  * 
- * @note
- * One way of ensuring monotonicity is to
- * 1) acquire mutex to coordinate node deletes w/ expiry epochs
- * 2) get current epoch as expiry epoch
- * 3) set node expiry epoch
- * 4) unlink node (make it unreachable)
- * 5) retire node
- * 6) release mutex
- *
 */
-extern void smrproxy_ref_next(smrproxy_ref_t *ref, epoch_t (*getexpiry)(void *), void *node);
+extern void smrproxy_ref_next(smrproxy_ref_t *ref, epoch_t (*getexpiry)(void *data, void *ctx), void *node, void *ctx);
+
 
 
 #ifdef __cplusplus
