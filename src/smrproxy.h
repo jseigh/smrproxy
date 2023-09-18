@@ -88,16 +88,18 @@ extern void smrproxy_destroy(smrproxy_t *proxy);
  * @param dtor destructor function for data
  * @param setexpiry set expiry value function
  * @param ctx optional context for setexpiry or NULL
+ * @returns expiry epoch of retired object or 0 if no space to queue retirement
 */
-extern void smrproxy_retire_async_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx);
+extern epoch_t smrproxy_retire_async_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx);
 
 /**
  * Retire a data object asynchronously., void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx
  * @param proxy the smr proxy
  * @param data address of data to be retired
  * @param dtor destructor function for data
+ * @returns expiry epoch of retired object or 0 if no space to queue retirement
 */
-extern void smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(void *));
+extern epoch_t smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(void *));
 
 /**
  * Retire a data object synchronously and set expiry epoch.
@@ -105,7 +107,7 @@ extern void smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(vo
  * @param proxy the smr proxy
  * @param data address of data to be retired
  * @param dtor destructor function for data
-  * @param setexpiry set expiry value function
+ * @param setexpiry set expiry value function
  * @param ctx optional context for setexpiry or NULL
 * 
  * @return

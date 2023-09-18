@@ -287,29 +287,36 @@ static int *smrproxy_poll3(void *arg)
     return 0;
 }
 
-void smrproxy_retire_async_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx)
+epoch_t smrproxy_retire_async_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx)
 {
     mtx_lock(&proxy->mutex);
+
+    if (smrqueue_full(proxy->queue))
+    {
+        mtx_unlock(&proxy->mutex);
+        return 0;
+    }
 
     if (setexpiry != NULL)
     {
         epoch_t expiry = *(proxy->epoch);
         (*setexpiry)(expiry, data, ctx);
-        atomic_thread_fence(memory_order_seq_cst);  // guaranteed store/store membar (c11 fence memory order is ill defined to put it mildly)
+        // store/store membar below from proxy->epoch update
     }
 
     epoch_t epoch = smr_enqueue(proxy->queue, data, dtor);
-    atomic_store(proxy->epoch, epoch);
+    atomic_store_explicit(proxy->epoch, epoch, memory_order_release);
 
     cnd_broadcast(&proxy->cvar);
 
     mtx_unlock(&proxy->mutex);
+    return epoch;
 }
 
 
-void smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(void *))
+epoch_t smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(void *))
 {
-    smrproxy_retire_async_exp(proxy, data, dtor, NULL, NULL);
+    return smrproxy_retire_async_exp(proxy, data, dtor, NULL, NULL);
 }
 
 int smrproxy_retire_sync_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx)
@@ -326,7 +333,7 @@ int smrproxy_retire_sync_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *)
     {
         epoch_t expiry = *(proxy->epoch);
         (*setexpiry)(expiry, data, ctx);
-        atomic_thread_fence(memory_order_seq_cst);  // guaranteed store/store membar (c11 fence memory order is ill defined to put it mildly)
+        // store/store membar below from proxy->epoch update
     }
 
     epoch_t epoch = 0;
@@ -337,7 +344,7 @@ int smrproxy_retire_sync_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *)
         else
             poll_wait(proxy);
     }
-    atomic_store(proxy->epoch, epoch);
+    atomic_store_explicit(proxy->epoch, epoch, memory_order_release);
 
     smrproxy_poll2(proxy, epoch);
 
@@ -383,14 +390,14 @@ void smrproxy_ref_next(smrproxy_ref_t *ref, epoch_t (*getexpiry)(void *node, voi
         return;
     }
 
-    epoch_t current_epoch = atomic_load_explicit(ref->proxy_epoch, memory_order_relaxed);
-    atomic_thread_fence(memory_order_seq_cst);  // guaranteed load/load membar (c11 fence memory order is ill defined to put it mildly)
+    epoch_t current_epoch = atomic_load_explicit(ref->proxy_epoch, memory_order_acquire);
+    // should be a load/load memory barrier here from the above memory_order_acquire
     epoch_t node_expiry = (*getexpiry)(node, ctx);
 
     if (node_expiry == 0)
-        atomic_store_explicit(&ref->epoch, current_epoch, memory_order_release);
+        atomic_store_explicit(&ref->epoch, current_epoch, memory_order_relaxed);
     else if (xcmp(node_expiry, ref->epoch) > 0)
-        atomic_store_explicit(&ref->epoch, node_expiry, memory_order_release);
+        atomic_store_explicit(&ref->epoch, node_expiry, memory_order_relaxed);
     else
         ;
 }
