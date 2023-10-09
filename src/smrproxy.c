@@ -27,7 +27,6 @@
 static smrproxy_config_t default_config = {
     200,    // 200 retire queue sloots
     50,     // 50 msec poll interval
-    false,  // no background thread
     64,     // default cachesize
 };
 
@@ -75,16 +74,9 @@ smrproxy_t * smrproxy_create(smrproxy_config_t *config)
     * proxy initialized
     */
 
-    if (proxy->config.poll)
-    {
-        thrd_t *tid = &proxy->poll_tid;
-        thrd_create(tid, (thrd_start_t) &smrproxy_poll3, proxy);
-        proxy->poll_thread = tid;
-    }
-    else
-    {
-        proxy->poll_thread = NULL;
-    }
+    thrd_t *tid = &proxy->poll_tid;
+    thrd_create(tid, (thrd_start_t) &smrproxy_poll3, proxy);
+    proxy->poll_thread = tid;
 
     return proxy;
 }
@@ -287,7 +279,7 @@ static int *smrproxy_poll3(void *arg)
     return 0;
 }
 
-epoch_t smrproxy_retire_async_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx)
+epoch_t smrproxy_retire_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx)
 {
     mtx_lock(&proxy->mutex);
 
@@ -314,47 +306,9 @@ epoch_t smrproxy_retire_async_exp(smrproxy_t *proxy, void *data, void (*dtor)(vo
 }
 
 
-epoch_t smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(void *))
+epoch_t smrproxy_retire(smrproxy_t *proxy, void *data, void (*dtor)(void *))
 {
-    return smrproxy_retire_async_exp(proxy, data, dtor, NULL, NULL);
-}
-
-int smrproxy_retire_sync_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx)
-{
-    smrproxy_ref_t *ref = tss_get(proxy->key);
-    if (ref != NULL && ref->epoch != 0)
-        return EDEADLK;
-
-    int rc = mtx_lock(&proxy->mutex);
-    if (rc != 0)
-        return rc;
-
-    if (setexpiry != NULL)
-    {
-        epoch_t expiry = *(proxy->epoch);
-        (*setexpiry)(expiry, data, ctx);
-        // store/store membar below from proxy->epoch update
-    }
-
-    epoch_t epoch = 0;
-    while ((epoch = smr_enqueue(proxy->queue, data, dtor)) == 0) {
-        smrproxy_poll(proxy);
-        if (!smrqueue_full(proxy->queue))
-            break;
-        else
-            poll_wait(proxy);
-    }
-    atomic_store_explicit(proxy->epoch, epoch, memory_order_release);
-
-    smrproxy_poll2(proxy, epoch);
-
-    mtx_unlock(&proxy->mutex);
-    return 0;
-}
-
-int smrproxy_retire_sync(smrproxy_t *proxy, void *data, void (*dtor)(void *))
-{
-    return smrproxy_retire_sync_exp(proxy, data, dtor, NULL, NULL);
+    return smrproxy_retire_exp(proxy, data, dtor, NULL, NULL);
 }
 
 /**
