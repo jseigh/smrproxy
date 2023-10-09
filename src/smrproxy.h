@@ -39,7 +39,6 @@ typedef struct smrproxy_t smrproxy_t;   // forward declare
 typedef struct smrproxy_config_t {
     unsigned int queue_size;        // size of retired objects queue
     unsigned int polltime;          // proxy refs poll interval in milliseconds
-    bool poll;                      // use backgroupd polling thread -- boolean (default=false)
     long cachesize;                 // default cachesize if not available from system, must be a power of 2.
 } smrproxy_config_t;
 
@@ -82,7 +81,7 @@ extern smrproxy_t * smrproxy_create(smrproxy_config_t *config);
 extern void smrproxy_destroy(smrproxy_t *proxy);
 
 /**
- * Retire a data object asynchronously and set expiry epoch, void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx
+ * Retire a data object asynchronously and set expiry epoch.
  * @param proxy the smr proxy
  * @param data address of data to be retired
  * @param dtor destructor function for data
@@ -90,44 +89,16 @@ extern void smrproxy_destroy(smrproxy_t *proxy);
  * @param ctx optional context for setexpiry or NULL
  * @returns expiry epoch of retired object or 0 if no space to queue retirement
 */
-extern epoch_t smrproxy_retire_async_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx);
+extern epoch_t smrproxy_retire_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx);
 
 /**
- * Retire a data object asynchronously., void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx
+ * Retire a data object asynchronously.
  * @param proxy the smr proxy
  * @param data address of data to be retired
  * @param dtor destructor function for data
  * @returns expiry epoch of retired object or 0 if no space to queue retirement
 */
-extern epoch_t smrproxy_retire_async(smrproxy_t *proxy, void *data, void (*dtor)(void *));
-
-/**
- * Retire a data object synchronously and set expiry epoch.
- * 
- * @param proxy the smr proxy
- * @param data address of data to be retired
- * @param dtor destructor function for data
- * @param setexpiry set expiry value function
- * @param ctx optional context for setexpiry or NULL
-* 
- * @return
- *- 0 if successful
- *- EDEADLK if current thread has a acquired ref
-*/
-extern int smrproxy_retire_sync_exp(smrproxy_t *proxy, void *data, void (*dtor)(void *), void (*setexpiry)(epoch_t expiry, void *data, void *ctx), void *ctx);
-
-/**
- * Retire a data object synchronously.
- * 
- * @param proxy the smr proxy
- * @param data address of data to be retired
- * @param dtor destructor function for data
- * 
- * @return
- *- 0 if successful
- *- EDEADLK if current thread has a acquired ref
-*/
-extern int smrproxy_retire_sync(smrproxy_t *proxy, void *data, void (*dtor)(void *));
+extern epoch_t smrproxy_retire(smrproxy_t *proxy, void *data, void (*dtor)(void *));
 
 /**
  * Create an smrproxy reference

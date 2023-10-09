@@ -79,7 +79,7 @@ static void push(queue_t *queue, const int event_id)
     epoch_t expiry = smrproxy_get_epoch(queue->proxy);
     fprintf(stdout, "retiring event_id=%d expiry=%lu\n", event_id, expiry);
 
-    smrproxy_retire_async_exp(queue->proxy, current, &free_node, &setexpiry, NULL);
+    smrproxy_retire_exp(queue->proxy, current, &free_node, &setexpiry, NULL);
 
     cnd_broadcast(&queue->cvar);
     mtx_unlock(&queue->mutex);
