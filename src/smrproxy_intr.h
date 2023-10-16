@@ -59,8 +59,32 @@ typedef struct smrqueue_t smrqueue_t;
 
 typedef struct smrproxy_membar_t smrproxy_membar_t;
 
+
+/**
+ * reference types
+*/
+typedef enum {
+    /** hazard pointer reference */
+    smr,
+    /** quiescent state reference */
+    qs,
+} reftype_t;
+
+
 typedef struct smrproxy_ref_ex_t {
-    smrproxy_ref_t ref;
+    union {
+        smrproxy_ref_t ref;
+        qs_ref_t qsref;
+    };
+
+    reftype_t type;
+
+
+    // for qs type refs
+    qslocal_t   qs_last;
+    epoch_t     qs_epoch_next;
+
+
     smrproxy_t *proxy;
     struct smrproxy_ref_ex_t *next;
 

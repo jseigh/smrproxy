@@ -120,11 +120,16 @@ void smrproxy_destroy(smrproxy_t *proxy)
     free(proxy);
 }
 
-smrproxy_ref_t * smrproxy_ref_create(smrproxy_t *proxy)
+static smrproxy_ref_ex_t * smrproxy_ref_ex_create(smrproxy_t *proxy, reftype_t reftype)
 {
     smrproxy_ref_ex_t *ref_ex = tss_get(proxy->key);
     if (ref_ex != NULL)
-        return &ref_ex->ref;
+    {
+        if (reftype == ref_ex->type)
+            return ref_ex;
+        else
+            abort();  // TODO
+    }
 
     size_t cachesize = proxy->config.cachesize;
 
@@ -134,30 +139,54 @@ smrproxy_ref_t * smrproxy_ref_create(smrproxy_t *proxy)
         return  NULL;
 
     memset(ref_ex, 0, size);
-    ref_ex->ref.proxy_epoch = proxy->epoch;
-    ref_ex->ref.epoch = 0;
     ref_ex->proxy = proxy;
 
     mtx_lock(&proxy->mutex);
+    switch (reftype) {
+        case smr:
+            ref_ex->ref.proxy_epoch = proxy->epoch;
+            ref_ex->ref.epoch = 0;
+            break;
+        case qs:
+            ref_ex->qsref.qs_enter = 0;
+            ref_ex->qsref.qs_exit = 0;
+            ref_ex->qs_last = 0;
+            ref_ex->qs_epoch_next = *proxy->epoch;
+            break;
+        default:
+            break;
+    }
+
     ref_ex->next = proxy->refs;
     proxy->refs = ref_ex;
     mtx_unlock(&proxy->mutex);
 
     tss_set(proxy->key, ref_ex);
 
+    return ref_ex;
+}
+
+smrproxy_ref_t * smrproxy_ref_create(smrproxy_t *proxy)
+{
+    smrproxy_ref_ex_t *ref_ex = smrproxy_ref_ex_create(proxy, smr);
     return &ref_ex->ref;
 }
 
-void smrproxy_ref_destroy(smrproxy_ref_t *ref)
+qs_ref_t * qsproxy_ref_create(smrproxy_t *proxy)
 {
-    if (ref == NULL)
+    smrproxy_ref_ex_t *ref_ex = smrproxy_ref_ex_create(proxy, qs);
+    return &ref_ex->qsref;
+}
+
+static void smrproxy_ref_ex_destroy(smrproxy_ref_ex_t *ref_ex)
+{
+    if (ref_ex == NULL)
         return;
 
-    smrproxy_ref_ex_t *ref_ex = (smrproxy_ref_ex_t *) ref;
     smrproxy_t *proxy = ref_ex->proxy;
 
-    smrproxy_ref_t *ref2 = tss_get(proxy->key);
-    if (ref2 != NULL && ref2 == ref)
+    smrproxy_ref_ex_t *ref2 = tss_get(proxy->key);
+    if (ref2 != NULL && ref2 == ref_ex)
     {
         tss_set(proxy->key, NULL);
     }
@@ -191,6 +220,62 @@ void smrproxy_ref_destroy(smrproxy_ref_t *ref)
 
     mtx_unlock(&proxy->mutex);
 }
+
+void smrproxy_ref_destroy(smrproxy_ref_t *ref)
+{
+    smrproxy_ref_ex_destroy((smrproxy_ref_ex_t *) ref);
+}
+
+void qsproxy_ref_destroy(qs_ref_t *ref)
+{
+    smrproxy_ref_ex_destroy((smrproxy_ref_ex_t *) ref);
+}
+
+
+static epoch_t poll_qsref(epoch_t current, epoch_t oldest, smrproxy_ref_ex_t *ref)
+{
+    qslocal_t x1 = atomic_load_explicit(&ref->qsref.qs_exit, memory_order_acquire);
+    qslocal_t x0 = atomic_load_explicit(&ref->qsref.qs_enter, memory_order_relaxed);
+
+    epoch_t local_oldest;
+
+    if (x1 == x0)
+    {
+        ref->qs_last = x1;
+        ref->qs_epoch_next = current;
+        return oldest;
+    }
+
+    if (ref->qs_last == x1)
+    {
+        local_oldest = ref->qs_epoch_next;
+    }
+
+    else
+    {
+        local_oldest = ref->qs_epoch_next;
+
+        ref->qs_last = x1;
+        ref->qs_epoch_next = current;
+    }
+
+    return (xcmp(local_oldest, oldest) < 0) ? local_oldest : oldest;
+}
+
+static epoch_t poll_smrref(epoch_t oldest, smrproxy_ref_ex_t *ref)
+{
+        epoch_t ref_epoch = ref->ref.epoch;
+
+        if (ref_epoch == 0)
+            return oldest;
+        else if (xcmp(ref_epoch, ref->proxy->head) < 0)
+            return oldest;
+        else if (xcmp(ref_epoch, oldest) < 0)
+            return ref_epoch;
+        else
+            return oldest;     
+}
+
 
 /**
  * Scan registered refs (hazard pointers) for oldest referenced epoch

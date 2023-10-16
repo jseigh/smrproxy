@@ -28,6 +28,11 @@ extern "C" {
 typedef uint32_t epoch_t;
 
 /**
+ * local quiescent state count
+*/
+typedef uint64_t qslocal_t;
+
+/**
  * @brief opaque handle to smr proxy object
 */
 typedef struct smrproxy_t smrproxy_t;   // forward declare
@@ -51,6 +56,11 @@ typedef struct smrproxy_ref_t {
     //
     uintptr_t   data;               // for optional use by user application, e.g. recursive counting, ...
 } smrproxy_ref_t;
+
+typedef struct qs_ref_t {
+    qslocal_t   qs_enter;
+    qslocal_t   qs_exit;
+} qs_ref_t;
 
 /*
 *
@@ -127,7 +137,7 @@ inline static void smrproxy_ref_acquire(smrproxy_ref_t *ref)
 
     epoch_t local, local2;
 
-#ifndef SMRPROXY_MBlong
+#ifndef SMRPROXY_MB
     local = atomic_load_explicit(epoch, memory_order_relaxed);
     do {
         local2 = local;
