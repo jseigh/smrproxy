@@ -13,8 +13,10 @@ endif ()
 
 message(STATUS "CMAKE_SOURCE_DIR : ${CMAKE_SOURCE_DIR}")
 message(STATUS "PROJECT_SOURCE_DIR : ${PROJECT_SOURCE_DIR}")
+message(STATUS "CMAKE_BINARY_DIR : ${CMAKE_BINARY_DIR}")
 
-#set(ADDITIONAL_CLEAN_FILES include lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+
 
 add_library(smrproxy STATIC
     src/smrproxy.c
@@ -24,19 +26,11 @@ add_library(smrproxy STATIC
 )
 
 target_include_directories(smrproxy PUBLIC
+    include
     src
 )
 
-set_property(TARGET smrproxy
-    APPEND
-    PROPERTY ADDITIONAL_CLEAN_FILES include lib
-)
-
-#${CMAKE_INSTALL_INCLUDEDIR}
-install(FILES src/smrproxy.h DESTINATION ${CMAKE_SOURCE_DIR}/include)
-#${CMAKE_INSTALL_LIBDIR}
-install(TARGETS smrproxy DESTINATION ${CMAKE_SOURCE_DIR}/lib)
-
-#target_compile_options(smrproxy PUBLIC ()
+install(TARGETS smrproxy ARCHIVE DESTINATION lib)
+install(FILES include/smrproxy.h DESTINATION include)
 
 
