@@ -63,7 +63,7 @@ smrproxy_t * smrproxy_create(smrproxy_config_t *config)
     epoch_t epoch = 1;
     *proxy->epoch = epoch;
     proxy->head = epoch;
-    proxy->sync_epoch = epoch;
+    proxy->sync_epoch = epoch - 2;  // ?
 
     proxy->refs = NULL;
 
@@ -142,6 +142,7 @@ static smrproxy_ref_ex_t * smrproxy_ref_ex_create(smrproxy_t *proxy)
 
     ref_ex->ref.proxy_epoch = proxy->epoch;
     ref_ex->ref.epoch = 0;
+    ref_ex->ref.current_epoch = *proxy->epoch;
     ref_ex->ref.effective_epoch = *proxy->epoch;
 
     ref_ex->next = proxy->refs;
@@ -207,12 +208,6 @@ void smrproxy_ref_destroy(smrproxy_ref_t *ref)
     smrproxy_ref_ex_destroy((smrproxy_ref_ex_t *) ref);
 }
 
-void qsproxy_ref_destroy(qs_ref_t *ref)
-{
-    smrproxy_ref_ex_destroy((smrproxy_ref_ex_t *) ref);
-}
-
-
 static epoch_t poll_smrref(epoch_t oldest, smrproxy_ref_ex_t *ref)
 {
         epoch_t ref_epoch = ref->ref.epoch;
@@ -227,13 +222,29 @@ static epoch_t poll_smrref(epoch_t oldest, smrproxy_ref_ex_t *ref)
             return oldest;     
 }
 
-static void update_effective_epochs(smrproxy_t *proxy, epoch_t effective)
+static inline epoch_t update_effective_epochs(smrproxy_t *proxy, epoch_t effective)
 {
+    epoch_t current_epoch = *proxy->epoch;
+    epoch_t oldest = current_epoch;     // should be same as current epoch / tail
+
     for (smrproxy_ref_ex_t *ref_ex = proxy->refs; ref_ex != NULL; ref_ex = ref_ex->next) {
+        atomic_store_explicit(&ref_ex->ref.current_epoch, current_epoch, memory_order_relaxed);
         epoch_t ref_epoch = atomic_load_explicit(&ref_ex->ref.epoch, memory_order_relaxed);
         if (ref_epoch == 0)
             ref_ex->ref.effective_epoch = effective;    // ? will always be >= previous value
+        else if (xcmp(ref_epoch,ref_ex->ref.effective_epoch) > 0)
+            ref_ex->ref.effective_epoch = ref_epoch;
+
+        epoch_t effective_epoch = ref_ex->ref.effective_epoch;
+
+        if (xcmp(effective_epoch, proxy->head) < 0)
+            continue;
+        else if (xcmp(effective_epoch, oldest) < 0)
+            oldest = effective_epoch;        
+
     }
+
+    return oldest;
 }
 
 
@@ -251,7 +262,7 @@ static epoch_t smrproxy_poll(smrproxy_t *proxy) {
     epoch_t epoch = *proxy->epoch;
     if (epoch != proxy->sync_epoch)
     {
-        update_effective_epochs(proxy, proxy->sync_epoch);          // ============== any value added?
+        // update_effective_epochs(proxy, proxy->sync_epoch);          // premature optization
 
         proxy->sync_epoch = epoch;
         smrproxy_membar_sync(proxy->membar);
@@ -266,22 +277,7 @@ static epoch_t smrproxy_poll(smrproxy_t *proxy) {
         return epoch;
 
 
-    epoch_t oldest = epoch;     // should be same as current epoch / tail
-    for (smrproxy_ref_ex_t *ref_ex = proxy->refs; ref_ex != NULL; ref_ex = ref_ex->next) {
-        epoch_t ref_epoch = atomic_load_explicit(&ref_ex->ref.epoch, memory_order_relaxed);
-        if (ref_epoch == 0)
-            ref_ex->ref.effective_epoch = *proxy->epoch;    // ? will always be >= previous value
-
-        epoch_t effective_epoch = ref_ex->ref.effective_epoch;
-
-
-        if (effective_epoch == 0)
-            continue;
-        else if (xcmp(effective_epoch, proxy->head) < 0)
-            continue;
-        else if (xcmp(effective_epoch, oldest) < 0)
-            oldest = effective_epoch;        
-    }
+    epoch_t oldest = update_effective_epochs(proxy, proxy->sync_epoch);;     // should be same as current epoch / tail
 
     proxy->head = smr_dequeue(proxy->queue, oldest); // ?
     return proxy->head;

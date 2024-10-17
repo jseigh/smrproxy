@@ -148,7 +148,7 @@ int main(int argc, char **argv)
 {
 
     smrproxy_config_t *config = smrproxy_default_config();
-    config->poll = true;
+    // config->poll = true;
 
     queue_t *queue = malloc(sizeof(queue_t));
     memset(queue, 0, sizeof(queue_t));

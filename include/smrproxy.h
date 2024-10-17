@@ -54,7 +54,11 @@ typedef struct smrproxy_ref_t {
     epoch_t epoch;                  // epoch as observed by reader thread, or 0
     epoch_t *proxy_epoch;
 
+
     /*-*/
+
+    epoch_t current_epoch;          // current epoch set by reclaim thread
+
 
     epoch_t effective_epoch;         // effective epoch as observed by reclaim thread, never 0
 
@@ -64,11 +68,6 @@ typedef struct smrproxy_ref_t {
 
     // TODO stats...
 } smrproxy_ref_t;
-
-typedef struct qs_ref_t {
-    qslocal_t   qs_enter;
-    qslocal_t   qs_exit;
-} qs_ref_t;
 
 /*
 *
@@ -140,10 +139,12 @@ extern void smrproxy_ref_destroy(smrproxy_ref_t *ref);
 */
 inline static void smrproxy_ref_acquire(smrproxy_ref_t *ref)
 {
-    epoch_t *epoch = ref->proxy_epoch;
+    // __builtin_prefetch(ref, 1, 0);
+
+    epoch_t *epoch = &ref->current_epoch;
     epoch_t *ref_epoch = &ref->epoch;
 
-    epoch_t local, local2;
+    epoch_t local;
 
 #ifndef SMRPROXY_MB
     local = atomic_load_explicit(epoch, memory_order_relaxed);
