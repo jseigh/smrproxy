@@ -54,7 +54,8 @@ static int writer(env_t *env)
     pdata = atomic_exchange(&env->pdata, pdata);
     strcpy(pdata, STALE);   // indicate old data is now stale
 
-    smrproxy_retire_sync(env->proxy, pdata, &freedata);
+    // smrproxy_retire_sync(env->proxy, pdata, &freedata);
+    smrproxy_retire(env->proxy, pdata, &freedata);
     return 0;
 }
 
