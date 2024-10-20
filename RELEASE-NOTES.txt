@@ -12,3 +12,7 @@ Move global epoch to its own cache line.
 0.0.2-pre-alpha  proof of concept
 
 0.0.1-pre-alpha  proof of concept
+
+release_0.0.1 original hazard pointer based logic
+
+release_0.0.2 changed to not use hazard pointer logic
