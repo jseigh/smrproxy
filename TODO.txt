@@ -1,0 +1,6 @@
+Partial list, not necessarily in any order.
+
+1) work on build scripts, probably something other than makefile
+2) testcases
+3) fix proxy.h do it doesn't require apps to define SMRPROXY_MB for platforms w/o global membar as it is error prone.
+4) c++ wrapper classes possibly
